@@ -30,5 +30,17 @@ namespace LibraryManagementSystem.Controllers
             if (!result.IsSuccess) return Unauthorized(result);
             return Ok(result);
         }
+
+        // 💡 NEW ENDPOINT: Handles incoming client requests to rotate expired access tokens
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] AuthResponseDto request)
+        {
+            if (request == null) return BadRequest("Invalid request payload");
+
+            var result = await _authService.RefreshTokenAsync(request);
+            if (!result.IsSuccess) return BadRequest(result);
+
+            return Ok(result);
+        }
     }
 }

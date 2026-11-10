@@ -1,5 +1,6 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using LibraryManagementSystem.DTOs;
 using LibraryManagementSystem.Models;
@@ -22,7 +23,6 @@ namespace LibraryManagementSystem.Services
 
         public async Task<AuthResponseDto> RegisterAsync(UserRegisterDto request)
         {
-            // Talk to Repo layer to check if user exists
             var existingUser = await _authRepository.GetUserByEmailAsync(request.Email);
             if (existingUser != null)
             {
@@ -37,7 +37,6 @@ namespace LibraryManagementSystem.Services
                 Role = request.Role
             };
 
-            // Talk to Repo layer to persist the data
             var success = await _authRepository.AddUserAsync(user);
             if (!success)
             {
@@ -49,7 +48,6 @@ namespace LibraryManagementSystem.Services
 
         public async Task<AuthResponseDto> LoginAsync(UserLoginDto request)
         {
-            // Talk to Repo layer to find the user
             var user = await _authRepository.GetUserByEmailAsync(request.Email);
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -58,7 +56,46 @@ namespace LibraryManagementSystem.Services
             }
 
             string token = GenerateJwtToken(user);
-            return new AuthResponseDto { IsSuccess = true, Message = "Login successful.", Token = token };
+            string refreshToken = GenerateRandomRefreshToken(); 
+
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7); 
+
+           await _authRepository.UpdateUserAsync(user);
+
+            return new AuthResponseDto
+            {
+                IsSuccess = true,
+                Message = "Login successful.",
+                AccessToken = token,
+                RefreshToken = refreshToken 
+            };
+        }
+
+        public async Task<AuthResponseDto> RefreshTokenAsync(AuthResponseDto request)
+        {
+            var user = await _authRepository.GetUserByRefreshTokenAsync(request.RefreshToken);
+
+            if (user == null || user.RefreshTokenExpiry <= DateTime.UtcNow)
+            {
+                return new AuthResponseDto { IsSuccess = false, Message = "Invalid or expired refresh token. Please login again." };
+            }
+
+            string newAccessToken = GenerateJwtToken(user);
+            string newRefreshToken = GenerateRandomRefreshToken();
+
+            user.RefreshToken = newRefreshToken;
+            user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+
+            await _authRepository.UpdateUserAsync(user);
+
+            return new AuthResponseDto
+            {
+                IsSuccess = true,
+                Message = "Tokens rotated successfully.",
+                AccessToken = newAccessToken,
+                RefreshToken = newRefreshToken
+            };
         }
 
         private string GenerateJwtToken(User user)
@@ -78,11 +115,19 @@ namespace LibraryManagementSystem.Services
                 issuer: _configuration["JwtConfig:Issuer"],
                 audience: _configuration["JwtConfig:Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddHours(2),
+                expires: DateTime.UtcNow.AddMinutes(int.Parse(_configuration["JwtConfig:TokenValidityInMinutes"]!)),
                 signingCredentials: creds
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        private string GenerateRandomRefreshToken()
+        {
+            var randomNumber = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            return Convert.ToBase64String(randomNumber);
         }
     }
 }

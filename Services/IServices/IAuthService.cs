@@ -6,5 +6,7 @@ namespace LibraryManagementSystem.Services.IServices
     {
         Task<AuthResponseDto> RegisterAsync(UserRegisterDto request);
         Task<AuthResponseDto> LoginAsync(UserLoginDto request);
+
+        Task<AuthResponseDto> RefreshTokenAsync(AuthResponseDto request);
     }
 }

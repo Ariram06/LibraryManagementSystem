@@ -6,5 +6,9 @@ namespace LibraryManagementSystem.Repository.IRepository
     {
         Task<User?> GetUserByEmailAsync(string email);
         Task<bool> AddUserAsync(User user);
+
+        Task<User> GetUserByRefreshTokenAsync(string refreshToken);
+       
+        Task<bool> UpdateUserAsync(User user);
     }
 }
